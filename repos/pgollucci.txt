@@ -1,6 +1,4 @@
-pgollucci/gh-parallel
 pgollucci/gollucci.com
 pgollucci/home
-pgollucci/loom
 pgollucci/p6-ai-agent-skills
 pgollucci/pgollucci

@@ -1,5 +1,3 @@
-p6m7g8-dotfiles/_p6df-homebrew
-p6m7g8-dotfiles/gh-parallel
 p6m7g8-dotfiles/p61password
 p6m7g8-dotfiles/p6aws
 p6m7g8-dotfiles/p6awscdk

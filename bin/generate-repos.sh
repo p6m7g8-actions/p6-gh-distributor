@@ -20,7 +20,10 @@ fi
 
 for org in "${orgs[@]}"; do
   echo "Generating repos/$org.txt ..."
-  gh repo list "$org" --limit 1000 --json nameWithOwner -q '.[].nameWithOwner' \
+  gh repo list "$org" --limit 1000 --json nameWithOwner,isArchived,isFork \
+    -q '.[] | select(.isArchived == false and .isFork == false) | .nameWithOwner' \
+    | grep -v '/\.github$' \
+    | grep -v 'p6m7g8-actions/p6-gh-distributor$' \
     | sort > "$ROOT_DIR/repos/$org.txt"
   echo "  $(wc -l < "$ROOT_DIR/repos/$org.txt") repos written."
 done
