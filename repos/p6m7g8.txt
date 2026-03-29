@@ -1,6 +1,7 @@
 p6m7g8/gh-parallel
 p6m7g8/gh-repo-mgmt
 p6m7g8/gh-ruleset-branch
+p6m7g8/p6-ai-agent-skills
 p6m7g8/p6-cdk-gha-role
 p6m7g8/p6-cdk-github-oidc-provider
 p6m7g8/p6-cdk-namer
@@ -24,6 +25,6 @@ p6m7g8/p6-template-uv
 p6m7g8/p6-zsh-pnpm-plugin
 p6m7g8/p6-zsh-projen-plugin
 p6m7g8/p6-zsh-sam-plugin
-p6m7g8/p6gm
+p6m7g8/p6df-greenhouse
 p6m7g8/p6m7g8.com
 p6m7g8/rustenv

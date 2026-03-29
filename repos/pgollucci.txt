@@ -1,7 +1,6 @@
+pgollucci/gh-parallel
 pgollucci/gollucci.com
 pgollucci/home
-pgollucci/home-private
 pgollucci/loom
-pgollucci/loom.fu
+pgollucci/p6-ai-agent-skills
 pgollucci/pgollucci
-pgollucci/tokenhub

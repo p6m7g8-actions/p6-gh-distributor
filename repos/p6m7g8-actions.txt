@@ -10,7 +10,10 @@ p6m7g8-actions/cdktf-build
 p6m7g8-actions/cdktf-deploy
 p6m7g8-actions/cdktf-upgrade
 p6m7g8-actions/checkout
+p6m7g8-actions/claude
+p6m7g8-actions/codex
 p6m7g8-actions/cspell
+p6m7g8-actions/gh-parallel
 p6m7g8-actions/gh-token-normalize
 p6m7g8-actions/next-build
 p6m7g8-actions/next-deploy

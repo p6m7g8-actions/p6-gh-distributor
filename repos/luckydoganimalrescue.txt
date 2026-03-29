@@ -1,5 +1,9 @@
+luckydoganimalrescue/_p6-ldar-brand-image
+luckydoganimalrescue/_p6-ldar-cdk-projen-brand-image
+luckydoganimalrescue/_p6-ldar-chrome-image-brander
 luckydoganimalrescue/gh-parallel
 luckydoganimalrescue/p6-ldar-brand-image-infra
 luckydoganimalrescue/p6-ldar-brand-image-website
+luckydoganimalrescue/p6-ldar-portal-scraper
 luckydoganimalrescue/p6-ldar-year-end-collage
 luckydoganimalrescue/p6df-ldar
