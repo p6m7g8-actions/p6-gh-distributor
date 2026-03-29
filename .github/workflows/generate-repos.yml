@@ -1,0 +1,41 @@
+name: Generate Repo Lists
+
+on:
+  schedule:
+    - cron: "0 6 * * 0"
+  workflow_dispatch:
+    inputs:
+      orgs:
+        description: "Space-separated org list override (default: all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: p6m7g8-actions/checkout@main
+
+      - name: Generate repo lists
+        env:
+          GH_TOKEN: ${{ secrets.P6_A_GH_TOKEN }}
+          ROOT_DIR: ${{ github.workspace }}
+          ORGS: ${{ inputs.orgs }}
+        run: |
+          if [[ -n "$ORGS" ]]; then
+            bin/generate-repos.sh $ORGS
+          else
+            bin/generate-repos.sh
+          fi
+
+      - name: Commit updated repo lists
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add repos/
+          git commit -m "chore: update repo lists" || echo "No changes"
+          git push

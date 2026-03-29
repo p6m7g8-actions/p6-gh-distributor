@@ -1,0 +1,43 @@
+{
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "files.associations": {
+    "*.yml": "yaml",
+    "*.yaml": "yaml"
+  },
+  "git.enableSmartCommit": true,
+  "yaml.validate": true,
+  "yaml.customTags": [
+    "!Ref",
+    "!Sub",
+    "!GetAtt",
+    "!If",
+    "!Equals",
+    "!Not",
+    "!And",
+    "!Or",
+    "!FindInMap",
+    "!Base64",
+    "!Cidr",
+    "!Select",
+    "!Split",
+    "!Join"
+  ],
+  "workbench.colorCustomizations": {
+    "editorGutter.background": "#000000"
+  },
+  "workbench.editorAssociations": {
+    "*.yaml": "default"
+  },
+  "cSpell.words": [
+    "amannn",
+    "corepack",
+    "elif",
+    "releasetag",
+    "Strawman"
+  ],
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  }
+}

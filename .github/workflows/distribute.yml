@@ -1,0 +1,27 @@
+name: Distribute
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workflow_files/**"
+      - "repos/**"
+  workflow_dispatch:
+    inputs:
+      orgs:
+        description: "Space-separated org list override (default: all)"
+        required: false
+        default: ""
+
+jobs:
+  distribute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: p6m7g8-actions/checkout@main
+
+      - name: Distribute
+        uses: p6m7g8-actions/p6-gh-distributor@main
+        with:
+          gh_token: ${{ secrets.P6_A_GH_TOKEN }}
+          orgs: ${{ inputs.orgs }}

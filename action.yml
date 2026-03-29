@@ -1,0 +1,56 @@
+name: "P6 GHA: Distribute Files to Repositories"
+description: "P6 GHA: Distribute Files to Repositories"
+author: "Philip M. Gollucci"
+
+inputs:
+  gh_token:
+    description: "Automation token (P6_A_GH_TOKEN)"
+    required: true
+  branch:
+    description: "Branch name to create in target repos"
+    required: false
+    default: "github-actions/file-distribution"
+  commit-message:
+    description: "Commit message"
+    required: false
+    default: "chore: distribute managed files"
+  pr-title:
+    description: "PR title"
+    required: false
+    default: "chore: distribute managed files"
+  pr-body:
+    description: "PR body"
+    required: false
+    default: "Distributes managed workflow files from p6m7g8-actions/p6-gh-distributor."
+  bot:
+    description: "Reviewer/assignee bot account"
+    required: false
+    default: "p6m7g8-automation"
+  orgs:
+    description: "Space-separated org list override (default: all repos/*.txt)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Normalize GitHub token
+      id: token
+      uses: p6m7g8-actions/gh-token-normalize@main
+      with:
+        preferred-token: ${{ inputs.gh_token }}
+        fallback-token: ${{ github.token }}
+        default-token: ${{ github.token }}
+
+    - name: Distribute files and open PRs
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.token.outputs.value }}
+        ROOT_DIR: ${{ github.action_path }}
+        BRANCH: ${{ inputs.branch }}
+        COMMIT_MSG: ${{ inputs.commit-message }}
+        PR_TITLE: ${{ inputs.pr-title }}
+        PR_BODY: ${{ inputs.pr-body }}
+        BOT: ${{ inputs.bot }}
+        ORGS: ${{ inputs.orgs }}
+      run: ${{ github.action_path }}/bin/distribute.sh
