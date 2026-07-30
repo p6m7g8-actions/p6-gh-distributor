@@ -3,6 +3,12 @@ name: Build
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
+  # The merge queue needs `build` and `Lint PR title` to report on the
+  # queue ref. merge_group alone was not dispatching, so mirror the
+  # push-on-queue-ref trigger the review workflows already use.
+  push:
+    branches:
+      - gh-readonly-queue/**
   merge_group:
     types: [checks_requested]
   workflow_dispatch: {}

@@ -1,8 +1,11 @@
 name: PR Labeler
 
 on:
+  # No `labeled`/`unlabeled`. The labeler applies both labels in a single
+  # call now, so reacting to its own label events only self-triggers extra
+  # no-op runs.
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
 
 jobs:
   label:
