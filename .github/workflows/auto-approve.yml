@@ -16,9 +16,11 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - name: Checkout
-        uses: p6m7g8-actions/checkout@main
+      # NOTE: `uses: ./` here resolved to THIS repo's own action, the distributor,
+      # so every pull_request_target ran a full 6-org distribution. It only ever
+      # failed at git push because `bot_token` is not a distributor input, so no
+      # PAT was set. Do NOT "fix" this by renaming the input to gh_token.
       - name: Auto-Approve PR
-        uses: ./
+        uses: p6m7g8-actions/p6-gh-pr-auto-approve@main
         with:
           bot_token: ${{ secrets.P6_A_GH_TOKEN }}

@@ -1,10 +1,11 @@
 # p6-gh-distributor
 
-Distributes managed workflow files to target repositories across multiple GitHub orgs, creating PRs with `auto-approve` and `auto-merge` labels.
+Distributes managed workflow files to target repositories across multiple GitHub
+orgs, creating PRs with `auto-approve` and `auto-merge` labels.
 
 ## Structure
 
-```
+```text
 workflow_files/
 ├── common/          # distributed to all orgs
 └── <org>/           # org-specific overrides (e.g. build.yml)
@@ -20,7 +21,7 @@ bin/
 ## Orgs
 
 | Org | build action |
-|-----|-------------|
+| --- | --- |
 | `p6m7g8-dotfiles` | `p6df-build` |
 | `p6m7g8-actions` | `p6-build` + concurrency + lint_pr_title |
 | `p6m7g8` | `p6-build` |
@@ -29,7 +30,7 @@ bin/
 
 ## Usage
 
-### Distribute (manual or on push to `workflow_files/` or `repos/`)
+### Distribute (workflow_dispatch only)
 
 ```yaml
 - uses: p6m7g8-actions/p6-gh-distributor@main
