@@ -74,11 +74,11 @@ distribute_to_repo() {
 
   pushd "$tmp" > /dev/null
 
-  git config user.name "github-actions"
-  git config user.email "github-actions@github.com"
-  git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${repo}.git"
-
-  git checkout -B "$BRANCH"
+  # The commit this distribution is based on. Captured before anything is
+  # modified, and reused as both the branch base and the `expectedHeadOid`
+  # optimistic-concurrency guard on the commit mutation.
+  local base_sha
+  base_sha=$(git rev-parse HEAD)
 
   # Copy common files
   mkdir -p .github/workflows
@@ -112,18 +112,113 @@ distribute_to_repo() {
     return
   fi
 
-  git commit -m "$COMMIT_MSG" --signoff
-  git push origin "$BRANCH" --force
+  # Commit through the API rather than `git commit` + `git push`.
+  #
+  # Every target repo enforces a `required_signatures` rule, and a commit made
+  # by `git commit` on a runner has no key to sign with. Such a commit is
+  # accepted by the push but can never be enqueued: the merge queue rejects it
+  # with "Commits must have verified signatures". That is the second of the two
+  # reasons no distribution PR had ever merged, and it is invisible from the PR
+  # page, which shows every required check green.
+  #
+  # Commits created by `createCommitOnBranch` are signed by GitHub itself, so
+  # they verify without provisioning or rotating a signing key on the runner.
+  # The tradeoff is that the file set has to be sent explicitly, which is what
+  # the diff below computes.
+  local name_status additions deletions
+  name_status=$(git diff --cached --name-status "$base_sha")
+
+  # Renames arrive as `R100<TAB>old<TAB>new` and must become a delete plus an
+  # add; the API has no rename operation.
+  additions=$(
+    printf '%s\n' "$name_status" | awk -F'\t' '
+      $1 ~ /^[AM]/ { print $2 }
+      $1 ~ /^R/    { print $3 }
+    ' | while IFS= read -r p; do
+      [[ -n "$p" ]] || continue
+      jq -n --arg path "$p" --arg contents "$(base64 < "$p" | tr -d '\n')" \
+        '{path: $path, contents: $contents}'
+    done | jq -s '.'
+  )
+  deletions=$(
+    printf '%s\n' "$name_status" | awk -F'\t' '$1 ~ /^[DR]/ { print $2 }' \
+      | jq -R 'select(length > 0) | {path: .}' | jq -s '.'
+  )
+
+  # Build the commit on a staging branch, then move the real branch to it in a
+  # single ref update.
+  #
+  # The obvious version of this — reset $BRANCH to base, then commit onto it —
+  # cannot be used. `createCommitOnBranch` requires an existing branch, so the
+  # reset has to happen first, and that momentarily leaves $BRANCH pointing at
+  # exactly the PR's base commit. GitHub sees an open PR with an empty diff and
+  # closes it, and creating the commit a second later does not reopen it. Going
+  # through staging means $BRANCH advances from its old commit straight to the
+  # new one and is never equal to base.
+  local staging="${BRANCH}-staging"
+  if gh api "repos/${repo}/git/ref/heads/${staging}" > /dev/null 2>&1; then
+    gh api -X PATCH "repos/${repo}/git/refs/heads/${staging}" \
+      -f "sha=$base_sha" -F force=true > /dev/null
+  else
+    gh api -X POST "repos/${repo}/git/refs" \
+      -f "ref=refs/heads/${staging}" -f "sha=$base_sha" > /dev/null
+  fi
+
+  # `--signoff` was previously passed to `git commit`; the trailer is now part
+  # of the message body sent to the API.
+  local commit_body commit_oid
+  commit_body="Signed-off-by: github-actions <github-actions@github.com>"
+
+  jq -n \
+    --arg repo "$repo" \
+    --arg branch "$staging" \
+    --arg oid "$base_sha" \
+    --arg headline "$COMMIT_MSG" \
+    --arg body "$commit_body" \
+    --argjson additions "$additions" \
+    --argjson deletions "$deletions" \
+    '{
+      query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+      variables: {
+        input: {
+          branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+          expectedHeadOid: $oid,
+          message: { headline: $headline, body: $body },
+          fileChanges: { additions: $additions, deletions: $deletions }
+        }
+      }
+    }' > "$tmp/commit-payload.json"
+
+  commit_oid=$(gh api graphql --input "$tmp/commit-payload.json" \
+    --jq '.data.createCommitOnBranch.commit.oid')
+  if [[ -z "$commit_oid" ]]; then
+    echo "::error::createCommitOnBranch returned no commit for $repo" >&2
+    gh api -X DELETE "repos/${repo}/git/refs/heads/${staging}" > /dev/null 2>&1 || true
+    return 1
+  fi
+
+  # Move the real branch onto the finished commit, then drop staging. Any open
+  # PR follows the ref and stays open, because it never saw an empty diff.
+  if gh api "repos/${repo}/git/ref/heads/${BRANCH}" > /dev/null 2>&1; then
+    gh api -X PATCH "repos/${repo}/git/refs/heads/${BRANCH}" \
+      -f "sha=$commit_oid" -F force=true > /dev/null
+  else
+    gh api -X POST "repos/${repo}/git/refs" \
+      -f "ref=refs/heads/${BRANCH}" -f "sha=$commit_oid" > /dev/null
+  fi
+  gh api -X DELETE "repos/${repo}/git/refs/heads/${staging}" > /dev/null 2>&1 || true
+
+  echo "Created signed commit $commit_oid on $BRANCH"
 
   # Create PR; fall back to fetching existing PR number if branch already has one
-  local pr_url pr_number
-  pr_url=$(gh pr create \
+  local pr_number
+  gh pr create \
     --title "$PR_TITLE" \
     --body "$PR_BODY" \
     --base main \
     --head "$BRANCH" \
     --repo "$repo" \
-    --reviewer "$BOT" 2>/dev/null) || true
+    --reviewer "$BOT" > /dev/null 2>&1 || true
 
   pr_number=$(gh pr view "$BRANCH" --repo "$repo" --json number -q '.number' 2>/dev/null) || true
 
