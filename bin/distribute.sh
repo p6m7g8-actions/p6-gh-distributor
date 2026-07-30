@@ -18,6 +18,47 @@ COMMIT_MSG="${COMMIT_MSG:-chore: distribute managed files}"
 PR_TITLE="${PR_TITLE:-chore: distribute managed files}"
 PR_BODY="${PR_BODY:-Distributes managed workflow files from p6m7g8-actions/p6-gh-distributor.}"
 BOT="${BOT:-p6m7g8-automation}"
+RETIRED_FILE="$ROOT_DIR/workflow_files/retired.txt"
+
+# Retired managed files, validated once before any repo is touched. Only names
+# listed here are ever deleted from a target, so a repo's own bespoke workflows
+# cannot be removed by a typo in the pack.
+RETIRED=()
+if [[ -f "$RETIRED_FILE" ]]; then
+  while IFS= read -r name; do
+    name="${name%%#*}"
+    name="$(printf '%s' "$name" | tr -d '[:space:]')"
+    [[ -z "$name" ]] && continue
+
+    # Reject anything that could escape .github/workflows/.
+    case "$name" in
+      */*|*..*)
+        echo "::error::retired.txt entry must be a bare filename, got '$name'" >&2
+        exit 2
+        ;;
+    esac
+
+    # A file cannot be both distributed and deleted.
+    if [[ -e "$ROOT_DIR/workflow_files/common/$name" ]]; then
+      echo "::error::'$name' is listed in retired.txt but still exists in workflow_files/common/" >&2
+      exit 2
+    fi
+    for org_dir in "$ROOT_DIR/workflow_files/"*/; do
+      [[ -d "$org_dir" ]] || continue
+      if [[ -e "$org_dir$name" ]]; then
+        echo "::error::'$name' is listed in retired.txt but still exists in $org_dir" >&2
+        exit 2
+      fi
+    done
+
+    RETIRED+=("$name")
+  done < "$RETIRED_FILE"
+fi
+if (( ${#RETIRED[@]} > 0 )); then
+  echo "Retired managed files to remove from targets: ${RETIRED[*]}"
+fi
+
+FAILED=()
 
 distribute_to_repo() {
   local repo="$1"
@@ -48,14 +89,29 @@ distribute_to_repo() {
     cp "$ROOT_DIR/workflow_files/$org/"* .github/workflows/
   fi
 
-  if git diff --quiet && git diff --cached --quiet; then
+  # Remove files that have been retired from the pack. Copying alone can never
+  # do this, which is why a retired file would otherwise persist downstream
+  # forever. Scoped to .github/workflows/ and to validated bare filenames.
+  local retired
+  for retired in ${RETIRED[@]+"${RETIRED[@]}"}; do
+    if [[ -f ".github/workflows/$retired" ]]; then
+      rm -f ".github/workflows/$retired"
+      echo "Removed retired managed file: $retired"
+    fi
+  done
+
+  # Stage BEFORE testing for changes. `git diff` is blind to untracked files, so
+  # checking first meant a brand-new template, or any target missing a managed
+  # file, reported "No changes" and was skipped unless some already-tracked file
+  # happened to differ too.
+  git add -A
+  if git diff --cached --quiet; then
     echo "No changes for $repo, skipping."
     popd > /dev/null
     echo "::endgroup::"
     return
   fi
 
-  git add -A
   git commit -m "$COMMIT_MSG" --signoff
   git push origin "$BRANCH" --force
 
@@ -84,6 +140,24 @@ distribute_to_repo() {
   echo "::endgroup::"
 }
 
+# One target must not sink the run. Previously a single failure — a 403 pushing
+# to an archived or unreachable repo, say — aborted the whole loop under
+# `set -euo pipefail`, silently leaving every later repo undistributed. Now each
+# target runs in a subshell that keeps errexit internally, so an intermediate
+# failure still stops THAT repo before it can commit or push a bad state, while
+# the run continues and reports every failure at the end.
+process_repo() {
+  local repo="$1" rc=0
+  set +e
+  ( set -e; distribute_to_repo "$repo" )
+  rc=$?
+  set -e
+  if (( rc != 0 )); then
+    echo "::warning::$repo failed (exit $rc); continuing with remaining targets"
+    FAILED+=("$repo")
+  fi
+}
+
 # Build list of repos to process
 if [[ -n "${ORGS:-}" ]]; then
   # Override: specific orgs only
@@ -92,7 +166,7 @@ if [[ -n "${ORGS:-}" ]]; then
     [[ -f "$repos_file" ]] || { echo "Warning: $repos_file not found, skipping."; continue; }
     while IFS= read -r repo; do
       [[ -z "$repo" || "$repo" == \#* ]] && continue
-      distribute_to_repo "$repo"
+      process_repo "$repo"
     done < "$repos_file"
   done
 else
@@ -100,7 +174,13 @@ else
   for repos_file in "$ROOT_DIR/repos/"*.txt; do
     while IFS= read -r repo; do
       [[ -z "$repo" || "$repo" == \#* ]] && continue
-      distribute_to_repo "$repo"
+      process_repo "$repo"
     done < "$repos_file"
   done
 fi
+
+if (( ${#FAILED[@]} > 0 )); then
+  echo "::error::${#FAILED[@]} target(s) failed: ${FAILED[*]}"
+  exit 1
+fi
+echo "All targets processed successfully."

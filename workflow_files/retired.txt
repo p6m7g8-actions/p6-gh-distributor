@@ -1,0 +1,18 @@
+# Managed workflow files that have been RETIRED from the pack.
+#
+# distribute.sh deletes these from every target repo. Removing a file from
+# workflow_files/ is not enough on its own: the script only ever copies, so a
+# retired file would otherwise persist downstream forever.
+#
+# Rules enforced by distribute.sh at startup:
+#   - one bare filename per line; no directory separators, no ".."
+#   - a name here must NOT also exist in workflow_files/common/ or any
+#     workflow_files/<org>/ directory. That contradiction is a hard error,
+#     because it would mean distributing and deleting the same file.
+# Only names listed here are ever deleted, so a target's own bespoke
+# workflows (deploy.yml, upgrade-main.yml, diag.yml, ci.yml, ...) are safe.
+
+# Retired 2026-07-30: gersmann/codex-review-action requests model
+# gpt-5.1-codex-max, which returns 404 Model not found. 196 workflows disabled,
+# removed as a required check from 66 rulesets, action repo archived.
+codex-review.yml
