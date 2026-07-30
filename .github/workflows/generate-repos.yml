@@ -25,7 +25,10 @@ jobs:
           ORGS: ${{ inputs.orgs }}
         run: |
           if [[ -n "$ORGS" ]]; then
-            bin/generate-repos.sh $ORGS
+            # ORGS is a space-separated list that must word-split into separate
+            # arguments, so read it into an array rather than quoting it (SC2086).
+            read -ra orgs_arr <<< "$ORGS"
+            bin/generate-repos.sh "${orgs_arr[@]}"
           else
             bin/generate-repos.sh
           fi
