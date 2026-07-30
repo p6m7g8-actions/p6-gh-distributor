@@ -18,7 +18,12 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: build-${{ github.event.pull_request.number || github.ref }}
+  # event_name is part of the key on purpose. A `push` to a gh-readonly-queue
+  # ref and a `merge_group` on that same ref both leave
+  # `github.event.pull_request.number` empty and both resolve `github.ref` to
+  # the queue ref, so without it the two share a group and cancel-in-progress
+  # cancels one of them. A cancelled required check dequeues the PR.
+  group: build-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
