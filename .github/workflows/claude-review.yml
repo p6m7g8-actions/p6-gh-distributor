@@ -3,6 +3,12 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, ready_for_review, synchronize]
+  # merge_group is not dispatching, so report on the queue ref via push.
+  # This repo is excluded from its own distribution, which is why its pack
+  # drifted behind the fleet's current generation.
+  push:
+    branches:
+      - gh-readonly-queue/**
   merge_group:
     types: [checks_requested]
 
