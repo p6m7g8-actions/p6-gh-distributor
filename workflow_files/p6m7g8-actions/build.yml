@@ -3,9 +3,12 @@ name: Build
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
-  # The merge queue needs `build` and `Lint PR title` to report on the
-  # queue ref. merge_group alone was not dispatching, so mirror the
-  # push-on-queue-ref trigger the review workflows already use.
+  # The merge queue needs `build` and `Lint PR title` to report on the queue
+  # ref, and merge_group is not dispatching (last such event org-wide was
+  # 2026-03-09). `claude-review` and `pull-request-lint` use the same trigger,
+  # but note the difference: they no-op on queue refs, whereas this workflow
+  # deliberately runs the FULL build there. Building the merged result is the
+  # entire point of a merge queue, so this one must not be stubbed out.
   push:
     branches:
       - gh-readonly-queue/**
@@ -24,7 +27,9 @@ concurrency:
   # the queue ref, so without it the two share a group and cancel-in-progress
   # cancels one of them. A cancelled required check dequeues the PR.
   group: build-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Only PR runs are cancellable. A cancelled required check dequeues the PR,
+  # so a queue-ref build must never be superseded by anything.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
