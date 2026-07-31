@@ -76,11 +76,35 @@ FAILED=()
 # is not a guaranteed part of the image; a missing binary would match nothing and
 # silently skip every build.yml. stderr is NOT discarded, so a genuine read error
 # surfaces instead of looking like "no match".
+# Commented-out lines are dropped first: a target that left
+# `# - uses: p6m7g8-actions/p6-cdk-build@main` in its build.yml would otherwise
+# yield a spurious second action and be skipped for a reason nobody can explain.
 build_actions_in() {
-  grep -Eo "uses:[[:space:]]+['\"]?p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*" "$1" \
+  grep -Ev '^[[:space:]]*#' "$1" \
+    | grep -Eo "uses:[[:space:]]+['\"]?p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*" \
     | grep -Eo 'p6m7g8-actions/[a-z0-9-]+' \
     | sort -u || true
 }
+
+# An org template that yields no build action is a defect in THIS repo's pack, not
+# a property of any target. Left to per-target handling it would look identical to
+# a bespoke target: every one of an org's repos -- all 118 of p6m7g8-dotfiles, say
+# -- would silently stop receiving build.yml, each emitting a notice blaming the
+# target. That is the same failure shape this script already refuses elsewhere: a
+# broken matcher finding nothing, skipping everything, and reading as success.
+#
+# So validate once, before any repo is cloned, and fail hard -- the convention
+# retired.txt validation above already sets.
+for org_dir in "$ROOT_DIR/workflow_files/"*/; do
+  [[ -d "$org_dir" ]] || continue
+  [[ "$(basename "$org_dir")" == "common" ]] && continue
+  org_build="${org_dir}build.yml"
+  [[ -f "$org_build" ]] || continue
+  if [[ -z "$(build_actions_in "$org_build")" ]]; then
+    echo "::error::$org_build declares no p6m7g8-actions build action; every target in $(basename "$org_dir") would be skipped as a mismatch" >&2
+    exit 2
+  fi
+done
 
 distribute_to_repo() {
   local repo="$1"
@@ -128,8 +152,13 @@ distribute_to_repo() {
   # So build.yml is only written when the target already agrees with the template
   # about which build action to use. A mismatched target keeps its file verbatim
   # and forgoes template updates; that is the correct trade, because it is
-  # currently working. Nothing else is gated on this -- the merge-queue fixes and
-  # claude-review.yml ship from common/, which every target receives.
+  # currently working.
+  #
+  # What a mismatched target does forgo is real, and it is NOT nothing: anything
+  # that lives in build.yml, including the `push` trigger on gh-readonly-queue/**
+  # that lets `build` report on the queue ref. If such a target lacks that
+  # trigger, distribution will not add it and the gap persists. Everything in
+  # common/ still reaches it, including auto-queue.yml and claude-review.yml.
   #
   # Four cases, and only the last one writes:
   #   no build.yml           -> skip. Never create one; a library or data repo
@@ -162,8 +191,10 @@ distribute_to_repo() {
       have=$(build_actions_in ".github/workflows/$base")
       want=$(build_actions_in "$src")
 
-      if [[ -z "$have" || -z "$want" ]]; then
-        echo "::notice::$repo: kept its own $base verbatim (no p6 build action matched in $( [[ -z "$have" ]] && echo target || echo template ); treating as bespoke)"
+      # `want` cannot be empty here: an org template with no build action is
+      # rejected at startup, so an empty `have` is unambiguously a bespoke target.
+      if [[ -z "$have" ]]; then
+        echo "::notice::$repo: kept its own $base verbatim (references no p6 build action; bespoke build)"
         continue
       fi
       if [[ "$have" != "$want" ]]; then

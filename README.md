@@ -31,8 +31,8 @@ Files in `<org>/` are **update-only**, and `build.yml` is additionally
 
 The pack holds one `build.yml` per org naming one build action. That does not
 survive the fleet: `p6m7g8` spans five archetypes across 30 repos, and
-`pgollucci` and `luckydoganimalrescue` disagree with their own template in most
-of their targets. A straight copy rewrites a correct `p6-cdk-construct-build` to
+`pgollucci` and `luckydoganimalrescue` disagree with their own template in 3 of
+their 4 targets. A straight copy rewrites a correct `p6-cdk-construct-build` to
 `p6-repo-build` and breaks that repo's CI.
 
 Substituting just the `uses:` line back is **not** sufficient, and was tried and
@@ -55,8 +55,10 @@ working.
 | build action differs from template | skipped verbatim |
 | build action matches template | template written |
 
-Nothing else is gated on this. The merge-queue fixes and `claude-review.yml` ship
-from `common/`, which every target receives regardless of archetype.
+Everything in `common/` still reaches every target regardless of archetype,
+including `auto-queue.yml` and `claude-review.yml`. What a mismatched target does
+forgo is anything living in `build.yml` itself — see
+[Known limitations](#known-limitations).
 
 Six targets have no `build.yml` and will not receive one: `p6-gh-manager`,
 `p6-sso-scim`, `rustenv`, `p6huggingface`, `p6-ldar-year-end-collage`,
@@ -93,17 +95,36 @@ shrinks this set without any change here.
 
 ## Orgs
 
-Every org ships a `build.yml`. The action named below is what a target's existing
-`build.yml` gets rewritten to, not what its repos necessarily use today.
+Every org ships a `build.yml`. The action named below is the one a target must
+**already** use for the template to be written; nothing is ever rewritten to it.
+The mismatch counts are measured, not assumed, and are what a run today would
+skip.
 
-| Org | Targets | build action | Notes |
-| --- | --- | --- | --- |
-| `p6m7g8-dotfiles` | 118 | `p6df-build` | matches reality, 117 of 118 |
-| `p6m7g8-actions` | 35 | `p6-repo-build` | adds concurrency and queue-ref handling |
-| `p6m7g8` | 30 | `p6-repo-build` | 5 archetypes present, mismatch |
-| `pgollucci` | 4 | `p6-next-build` | mismatch |
-| `luckydoganimalrescue` | 4 | `p6-next-build` | mismatch |
-| `continue-learning` | 0 | `p6-repo-build` | target list intentionally empty |
+| Org | Targets | build action | Would write | Would skip |
+| --- | --- | --- | --- | --- |
+| `p6m7g8-dotfiles` | 118 | `p6df-build` | 117 | 1 (no `build.yml`) |
+| `p6m7g8-actions` | 35 | `p6-repo-build` | 0 | 35, all pre-rename `p6-build` |
+| `p6m7g8` | 30 | `p6-repo-build` | 0 | 25 mismatch, 3 none, 2 bespoke |
+| `pgollucci` | 4 | `p6-next-build` | 0 | 3 mismatch, 1 none |
+| `luckydoganimalrescue` | 4 | `p6-next-build` | 0 | 3 mismatch, 1 none |
+| `continue-learning` | 0 | `p6-repo-build` | 0 | target list intentionally empty |
+
+Measured 2026-07-31 with the same extractor the script uses. Two things this makes
+obvious that the previous prose did not:
+
+- **`p6m7g8-actions` would gain nothing from a run today.** All 35 targets still
+  say `p6-build` against a template naming `p6-repo-build` — the same archetype
+  under its pre-rename name. The rename sweep missed `.github/workflows/` because
+  `fd` skips hidden directories, so every one of them reads as a mismatch. Update
+  those refs first, or the run delivers no `build.yml` changes to the org whose
+  template carries the concurrency and queue-ref handling.
+- **`p6m7g8-dotfiles` is the only org where a run does substantial work today**,
+  117 of 118.
+
+Pre-rename names currently misreported as mismatches include `p6-build`,
+`next-build`, `cdk-build`, and `cdk-construct-build`. Those resolve to matches
+once downstream refs are updated; genuine archetype differences (`p6df-build`
+under `pgollucci`, for instance) remain.
 
 ## Usage
 
