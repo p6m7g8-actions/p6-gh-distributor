@@ -60,9 +60,20 @@ including `auto-queue.yml` and `claude-review.yml`. What a mismatched target doe
 forgo is anything living in `build.yml` itself — see
 [Known limitations](#known-limitations).
 
-Six targets have no `build.yml` and will not receive one: `p6-gh-manager`,
-`p6-sso-scim`, `rustenv`, `p6huggingface`, `p6-ldar-year-end-collage`,
-`p6-ai-agent-skills`.
+Six targets have no `build.yml` and will not receive one. Names are qualified
+because `p6-ai-agent-skills` exists in two orgs and only the `pgollucci` one lacks
+a build:
+
+- `p6m7g8/p6-gh-manager`
+- `p6m7g8/p6-sso-scim`
+- `p6m7g8/rustenv`
+- `p6m7g8-dotfiles/p6huggingface`
+- `luckydoganimalrescue/p6-ldar-year-end-collage`
+- `pgollucci/p6-ai-agent-skills`
+
+`p6m7g8/p6-ai-agent-skills` does have a `build.yml`, on `p6-build`, so it counts
+as a mismatch rather than a missing build. That is why `p6m7g8` shows 3 in the
+`none` column, not 4.
 
 **To onboard one of them**, commit a `build.yml` to the target by hand, choosing
 the archetype that repo needs. If it matches the org template, distribution
@@ -81,12 +92,20 @@ because they reference no p6 build action at all, but a *partially* diverged one
 is not detected.
 
 **Mismatched targets receive no `build.yml` updates at all**, including
-merge-queue fixes to that file. Against current targets that is 18 of 30 in
-`p6m7g8` and 3 of 4 in each of `pgollucci` and `luckydoganimalrescue`. Concretely, if such a
-target lacks the `push` trigger on `gh-readonly-queue/**` that lets `build` report
-on the queue ref, distribution will not add it, and that gap persists. Everything
-shipped from `common/` still reaches them, including `auto-queue.yml` and
-`claude-review.yml`.
+merge-queue fixes to that file. Measured today that is 25 of 30 in `p6m7g8`, 3 of
+4 in each of `pgollucci` and `luckydoganimalrescue`, and **35 of 35 in
+`p6m7g8-actions`** — the largest set, and the one with real consequences, because
+that org's template is the one carrying the concurrency and queue-ref handling.
+Concretely, if such a target lacks the `push` trigger on `gh-readonly-queue/**`
+that lets `build` report on the queue ref, distribution will not add it and the
+gap persists. Everything shipped from `common/` still reaches them, including
+`auto-queue.yml` and `claude-review.yml`.
+
+**An action name outside `[a-z0-9-]` now aborts the whole run.** The extractor's
+character class is also the pack's validator, so an org template naming an action
+with an uppercase letter or an underscore no longer degrades to per-target skips —
+it exits 2 before any repo is cloned, including for orgs whose templates are fine.
+Failing loud on a pack defect is the intent; the blast radius is the whole run.
 
 Some of these mismatches are only pre-rename names (`next-build` versus
 `p6-next-build`) rather than genuine archetype differences. Those will start
@@ -107,7 +126,7 @@ skip.
 | `p6m7g8` | 30 | `p6-repo-build` | 0 | 25 mismatch, 3 none, 2 bespoke |
 | `pgollucci` | 4 | `p6-next-build` | 0 | 3 mismatch, 1 none |
 | `luckydoganimalrescue` | 4 | `p6-next-build` | 0 | 3 mismatch, 1 none |
-| `continue-learning` | 0 | `p6-repo-build` | 0 | target list intentionally empty |
+| `continue-learning` | 0 | `p6-repo-build` | — | — (target list intentionally empty) |
 
 Measured 2026-07-31 with the same extractor the script uses. Two things this makes
 obvious that the previous prose did not:
@@ -150,6 +169,16 @@ under `pgollucci`, for instance) remain.
 ```bash
 ROOT_DIR=. GH_TOKEN=<token> bin/generate-repos.sh
 ```
+
+### Run the tests
+
+```bash
+./test/pack-validation.sh
+```
+
+Exercises the startup validation of `workflow_files/<org>/build.yml`. It needs no
+token and no network, because the validation runs before any repo is cloned. Also
+run by `smoke.yml` on any PR touching `bin/`, `workflow_files/`, or `test/`.
 
 ## Commits are signed
 

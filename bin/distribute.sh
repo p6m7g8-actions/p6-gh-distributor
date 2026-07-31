@@ -86,22 +86,30 @@ build_actions_in() {
     | sort -u || true
 }
 
-# An org template that yields no build action is a defect in THIS repo's pack, not
-# a property of any target. Left to per-target handling it would look identical to
-# a bespoke target: every one of an org's repos -- all 118 of p6m7g8-dotfiles, say
-# -- would silently stop receiving build.yml, each emitting a notice blaming the
-# target. That is the same failure shape this script already refuses elsewhere: a
-# broken matcher finding nothing, skipping everything, and reading as success.
+# An org template that does not resolve to EXACTLY ONE build action is a defect in
+# THIS repo's pack, not a property of any target.
 #
-# So validate once, before any repo is cloned, and fail hard -- the convention
-# retired.txt validation above already sets.
+# Left to per-target handling both failure shapes look identical to a bespoke
+# target: every repo in the org -- all 118 of p6m7g8-dotfiles, say -- silently
+# stops receiving build.yml, each emitting a notice that blames the target. Zero
+# actions happens when someone reformats a `uses:` line out of the pattern's
+# reach; two happens on a second build job, a matrix step, or a bad merge, and
+# then every target's single-line `have` mismatches the two-line `want`.
+#
+# Both are the failure this script refuses elsewhere: a broken matcher finding
+# nothing, skipping everything, and reading as success. So validate once, before
+# any repo is cloned, and fail hard -- the convention retired.txt validation
+# above already sets.
 for org_dir in "$ROOT_DIR/workflow_files/"*/; do
   [[ -d "$org_dir" ]] || continue
   [[ "$(basename "$org_dir")" == "common" ]] && continue
   org_build="${org_dir}build.yml"
   [[ -f "$org_build" ]] || continue
-  if [[ -z "$(build_actions_in "$org_build")" ]]; then
-    echo "::error::$org_build declares no p6m7g8-actions build action; every target in $(basename "$org_dir") would be skipped as a mismatch" >&2
+  org_actions="$(build_actions_in "$org_build")"
+  org_count="$(printf '%s' "$org_actions" | grep -c . || true)"
+  if [[ "$org_count" != 1 ]]; then
+    echo "::error::$org_build resolves to $org_count p6m7g8-actions build actions, expected exactly 1: $(printf '%s' "$org_actions" | tr '\n' ' ')" >&2
+    echo "::error::every target in $(basename "$org_dir") would be skipped as a mismatch; fix the template" >&2
     exit 2
   fi
 done
