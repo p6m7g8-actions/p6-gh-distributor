@@ -1,12 +1,11 @@
 name: Smoke
 on:
   workflow_dispatch: {}
-  pull_request:
-    paths:
-      - "bin/**"
-      - "workflow_files/**"
-      - "test/**"
-      - ".github/workflows/smoke.yml"
+  # Deliberately NO paths filter. Smoke is not a required check today, but if it
+  # becomes one a filtered trigger would leave a docs-only PR stuck at
+  # "Expected -- waiting for status" forever, which matters in a repo that drives
+  # everything through auto-merge. The job costs about a second.
+  pull_request: {}
   push:
     branches:
       - gh-readonly-queue/**
