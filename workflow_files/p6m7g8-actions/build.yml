@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Build
-        uses: p6m7g8-actions/p6-build@main
+        uses: p6m7g8-actions/p6-repo-build@main
         with:
           gh_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -52,6 +52,6 @@ jobs:
         run: echo "No PR title in merge_group event; marking check successful."
       - name: Lint PR title
         if: github.event_name == 'pull_request'
-        uses: p6m7g8-actions/p6-gh-pr-title-linter@main
+        uses: p6m7g8-actions/p6-gh-pr-title-lint@main
         with:
           gh_token: ${{ secrets.GITHUB_TOKEN }}

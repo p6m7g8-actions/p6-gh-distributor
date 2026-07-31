@@ -33,7 +33,7 @@ bin/
 ### Distribute (workflow_dispatch only)
 
 ```yaml
-- uses: p6m7g8-actions/p6-gh-distributor@main
+- uses: p6m7g8-actions/p6-gh-workflow-distribute@main
   with:
     gh_token: ${{ secrets.P6_A_GH_TOKEN }}
 ```
@@ -41,7 +41,7 @@ bin/
 ### Limit to specific orgs
 
 ```yaml
-- uses: p6m7g8-actions/p6-gh-distributor@main
+- uses: p6m7g8-actions/p6-gh-workflow-distribute@main
   with:
     gh_token: ${{ secrets.P6_A_GH_TOKEN }}
     orgs: "p6m7g8-dotfiles p6m7g8-actions"
