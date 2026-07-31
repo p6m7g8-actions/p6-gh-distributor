@@ -107,7 +107,11 @@ distribute_to_repo() {
       if [[ -f ".github/workflows/$base" ]]; then
         cp "$src" ".github/workflows/$base"
       else
-        echo "Skipped org file $base: target has none, and its archetype is unknown"
+        # ::notice:: rather than a bare echo: this line is the only record that a
+        # target was deliberately denied a build workflow, and a bare echo is
+        # buried in the collapsed ::group:: for this repo. Include $repo so the
+        # message stands alone in the run summary.
+        echo "::notice::$repo: skipped org file $base (target has none, archetype unknown)"
       fi
     done
   fi
