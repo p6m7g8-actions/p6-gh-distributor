@@ -85,30 +85,37 @@ distribute_to_repo() {
   mkdir -p .github/workflows
   cp "$ROOT_DIR/workflow_files/common/"* .github/workflows/
 
-  # Org-specific files are UPDATE-ONLY and ARCHETYPE-PRESERVING.
+  # Org-specific files are UPDATE-ONLY, and build.yml is additionally
+  # SKIP-ON-ARCHETYPE-MISMATCH.
   #
-  # The only org-specific file is build.yml, and the pack holds exactly one per
-  # org, naming one build action. That assumption does not survive the fleet:
-  # p6m7g8 spans five archetypes across 30 repos, and pgollucci and
-  # luckydoganimalrescue disagree with their own template in half their targets.
-  # A straight copy would rewrite a correct `p6-cdk-construct-build` to
-  # `p6-repo-build` and break that repo's CI.
+  # The pack holds one build.yml per org naming one build action, and that does
+  # not survive the fleet: p6m7g8 spans five archetypes across 30 repos, and
+  # pgollucci and luckydoganimalrescue disagree with their own template in half
+  # their targets. A straight copy rewrites a correct `p6-cdk-construct-build` to
+  # `p6-repo-build` and breaks that repo's CI.
   #
-  # So the template supplies the STRUCTURE -- triggers, concurrency, queue-ref
-  # handling, permissions -- and the target keeps its own build ACTION. Every
-  # repo gets the merge-queue fixes without having its archetype reassigned by
-  # whichever org it happens to live in.
+  # Substituting just the `uses:` line back is NOT sufficient and was tried:
+  # the preserved action would then be invoked with the TEMPLATE's `with:` block.
+  # Those genuinely differ per archetype -- pgollucci and luckydoganimalrescue
+  # pass no inputs at all, p6m7g8-dotfiles passes `gh_token` plus
+  # `shellcheck: false` -- so a `p6-repo-build` target under pgollucci would lose
+  # its `gh_token`, and a non-p6df target under p6m7g8-dotfiles would gain a
+  # `shellcheck` input its action may not declare. Preserving the action name
+  # while replacing its invocation is worse than not touching the file.
   #
-  # Four cases, and only the last one writes an unmodified template:
-  #   no build.yml            -> skip. Never create one; a library or data repo
-  #                              may not want a build at all.
-  #   0 p6 build refs         -> skip. Fully bespoke (p6-template-uv,
-  #                              p6-template-sam-eslint-pnpm-ts-flatfile); there
-  #                              is no archetype to carry over.
-  #   >1 p6 build refs        -> skip. Ambiguous, and guessing is worse than
-  #                              leaving it alone.
-  #   exactly 1 p6 build ref  -> copy the template, then substitute the build
-  #                              action back to the target's own.
+  # So build.yml is only written when the target already agrees with the template
+  # about which build action to use. A mismatched target keeps its file verbatim
+  # and forgoes template updates; that is the correct trade, because it is
+  # currently working. Nothing else is gated on this -- the merge-queue fixes and
+  # claude-review.yml ship from common/, which every target receives.
+  #
+  # Four cases, and only the last one writes:
+  #   no build.yml           -> skip. Never create one; a library or data repo
+  #                             may not want a build at all.
+  #   0 p6 build refs        -> skip. Fully bespoke (p6-template-uv,
+  #                             p6-template-sam-eslint-pnpm-ts-flatfile).
+  #   action differs         -> skip. Would reassign the archetype.
+  #   action matches         -> write the template.
   if [[ -d "$ROOT_DIR/workflow_files/$org" ]]; then
     local src base
     for src in "$ROOT_DIR/workflow_files/$org/"*; do
@@ -120,7 +127,7 @@ distribute_to_repo() {
         # target was deliberately denied a build workflow, and a bare echo is
         # buried in the collapsed ::group:: for this repo. Include $repo so the
         # message stands alone in the run summary.
-        echo "::notice::$repo: skipped org file $base (target has none, archetype unknown)"
+        echo "::notice::$repo: skipped $base, target has none and the archetype it wants is unknowable from here"
         continue
       fi
 
@@ -129,38 +136,27 @@ distribute_to_repo() {
         continue
       fi
 
-      # Archetype-preserving update. Match only build-ish action names so an
-      # unrelated p6 action in the same file is never mistaken for the archetype.
-      local -a have
-      mapfile -t have < <(
-        rg -o 'uses: p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*@[A-Za-z0-9._/-]+' \
-          ".github/workflows/$base" 2>/dev/null | sort -u
-      )
-      local want
-      want=$(rg -o 'uses: p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*@[A-Za-z0-9._/-]+' \
-        "$src" 2>/dev/null | sort -u | head -1)
+      # `grep -E` rather than `rg`: this runs on a GitHub runner, where ripgrep
+      # is not a guaranteed part of the image, and a missing binary here would
+      # silently match nothing and skip every build.yml. stderr is deliberately
+      # NOT discarded, so a real read error surfaces instead of looking like
+      # "no match".
+      local have want
+      have=$(grep -Eo 'uses: p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*@[A-Za-z0-9._/-]+' \
+        ".github/workflows/$base" | sort -u) || true
+      want=$(grep -Eo 'uses: p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*@[A-Za-z0-9._/-]+' \
+        "$src" | sort -u) || true
 
-      if (( ${#have[@]} != 1 )) || [[ -z "$want" ]]; then
-        echo "::notice::$repo: kept its own $base (${#have[@]} build refs found, cannot map archetype safely)"
+      if [[ -z "$have" || -z "$want" ]]; then
+        echo "::notice::$repo: kept its own $base verbatim (no p6 build action found in target or template; bespoke build)"
+        continue
+      fi
+      if [[ "$have" != "$want" ]]; then
+        echo "::notice::$repo: kept its own $base verbatim (target uses ${have#uses: }, template would impose ${want#uses: })"
         continue
       fi
 
       cp "$src" ".github/workflows/$base"
-      if [[ "${have[0]}" != "$want" ]]; then
-        # Substitute via a literal-string replacement rather than a regex so an
-        # action name is never treated as a pattern.
-        python3 - "$PWD/.github/workflows/$base" "$want" "${have[0]}" <<'PY'
-import sys
-path, want, have = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(path) as fh:
-    body = fh.read()
-if want not in body:
-    sys.exit(f"expected {want!r} in freshly copied template")
-with open(path, "w") as fh:
-    fh.write(body.replace(want, have))
-PY
-        echo "::notice::$repo: $base updated from template, archetype preserved (${have[0]#uses: } kept, not ${want#uses: })"
-      fi
     done
   fi
 

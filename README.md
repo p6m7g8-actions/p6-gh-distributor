@@ -26,50 +26,57 @@ Files in `common/` are **created or updated** unconditionally. Every repo needs
 them regardless of what it builds: approval, enqueue, labelling, title lint,
 stale, release.
 
-Files in `<org>/` are **update-only** and **archetype-preserving**.
+Files in `<org>/` are **update-only**, and `build.yml` is additionally
+**skipped on archetype mismatch**.
 
-The pack holds exactly one `build.yml` per org, naming one build action. That
-assumption does not survive the fleet: `p6m7g8` spans five archetypes across 30
-repos, and `pgollucci` and `luckydoganimalrescue` disagree with their own
-template in half their targets. A straight copy would rewrite a correct
-`p6-cdk-construct-build` to `p6-repo-build` and break that repo's CI.
+The pack holds one `build.yml` per org naming one build action. That does not
+survive the fleet: `p6m7g8` spans five archetypes across 30 repos, and
+`pgollucci` and `luckydoganimalrescue` disagree with their own template in most
+of their targets. A straight copy rewrites a correct `p6-cdk-construct-build` to
+`p6-repo-build` and breaks that repo's CI.
 
-So the template supplies the **structure** (triggers, concurrency, queue-ref
-handling, permissions) and the target keeps its own build **action**. Every repo
-gets the merge-queue fixes without having its archetype reassigned by whichever
-org it happens to live in.
+Substituting just the `uses:` line back is **not** sufficient, and was tried and
+rejected: the preserved action would then be invoked with the *template's*
+`with:` block. Those differ per org — `pgollucci` and `luckydoganimalrescue` pass
+no inputs at all, `p6m7g8-dotfiles` passes `gh_token` plus `shellcheck: false` —
+so a `p6df-build` target under `pgollucci` would silently lose its `gh_token`.
+Preserving the action name while replacing its invocation is worse than not
+touching the file.
 
-Four cases, and only the last writes an unmodified template:
+So `build.yml` is written only when the target already agrees with the template
+about which build action to use. A mismatched target keeps its file verbatim and
+forgoes template updates, which is the correct trade because it is currently
+working.
 
 | Target's `build.yml` | Behavior |
 | --- | --- |
 | absent | skipped, never created |
-| present, 0 p6 build refs | skipped, fully bespoke |
-| present, >1 p6 build refs | skipped, ambiguous |
-| present, exactly 1 p6 build ref | template copied, build action substituted back |
+| no p6 build action | skipped, bespoke |
+| build action differs from template | skipped verbatim |
+| build action matches template | template written |
 
-Measured across all 156 targets: 148 have exactly one build ref, 6 have no
-`build.yml`, and 2 are bespoke (`p6-template-uv`,
-`p6-template-sam-eslint-pnpm-ts-flatfile`).
+Nothing else is gated on this. The merge-queue fixes and `claude-review.yml` ship
+from `common/`, which every target receives regardless of archetype.
 
 Six targets have no `build.yml` and will not receive one: `p6-gh-manager`,
 `p6-sso-scim`, `rustenv`, `p6huggingface`, `p6-ldar-year-end-collage`,
 `p6-ai-agent-skills`.
 
 **To onboard one of them**, commit a `build.yml` to the target by hand, choosing
-the archetype that repo needs. Distribution maintains it from the next run
-onward, preserving the action you chose.
+the archetype that repo needs. If it matches the org template, distribution
+maintains it from the next run onward.
 
-Every skip and every substitution is reported as a `::notice::` including the
-repo name, so it appears in the run summary rather than only inside the collapsed
-per-repo log group.
+Every skip is reported as a `::notice::` naming the repo and both actions, so it
+appears in the run summary rather than only inside the collapsed per-repo log
+group.
 
 ### Known limitation
 
-Archetype preservation covers the build **action**. If a target's `build.yml`
-diverges from its org template structurally — different jobs, extra steps — that
-structure is still replaced. The two fully bespoke targets are skipped entirely
-for this reason, but a partially-diverged one would not be detected.
+Targets whose build action differs from their org template receive no `build.yml`
+updates at all, including merge-queue fixes to that file. Some of those
+mismatches are only pre-rename names (`next-build` versus `p6-next-build`) rather
+than genuine archetype differences; those will start matching once downstream
+`uses:` refs are updated to the renamed actions.
 
 ## Orgs
 
