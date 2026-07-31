@@ -85,34 +85,78 @@ distribute_to_repo() {
   mkdir -p .github/workflows
   cp "$ROOT_DIR/workflow_files/common/"* .github/workflows/
 
-  # Org-specific files are UPDATE-ONLY: refreshed where the target already has
-  # them, never created where it does not.
+  # Org-specific files are UPDATE-ONLY, and build.yml is additionally
+  # SKIP-ON-ARCHETYPE-MISMATCH.
   #
-  # The only org-specific file is build.yml, and it names one build archetype per
-  # org. That assumption does not hold -- p6m7g8 alone spans five archetypes
-  # across 30 repos -- so creating it where absent would hand a repo a build it
-  # never asked for, chosen by which org it happens to live in. Six targets have
-  # no build.yml today (p6-gh-manager, p6-sso-scim, rustenv, p6huggingface,
-  # p6-ldar-year-end-collage, p6-ai-agent-skills); a library or data repo may
-  # legitimately not want one.
+  # The pack holds one build.yml per org naming one build action, and that does
+  # not survive the fleet: p6m7g8 spans five archetypes across 30 repos, and
+  # pgollucci and luckydoganimalrescue disagree with their own template in half
+  # their targets. A straight copy rewrites a correct `p6-cdk-construct-build` to
+  # `p6-repo-build` and breaks that repo's CI.
   #
-  # This does NOT fix the archetype problem for repos that DO have a build.yml --
-  # those are still overwritten with the org's single flavor. That needs a
-  # per-repo flavor selector and is deliberately out of scope here.
+  # Substituting just the `uses:` line back is NOT sufficient and was tried:
+  # the preserved action would then be invoked with the TEMPLATE's `with:` block.
+  # Those genuinely differ per archetype -- pgollucci and luckydoganimalrescue
+  # pass no inputs at all, p6m7g8-dotfiles passes `gh_token` plus
+  # `shellcheck: false` -- so a `p6-repo-build` target under pgollucci would lose
+  # its `gh_token`, and a non-p6df target under p6m7g8-dotfiles would gain a
+  # `shellcheck` input its action may not declare. Preserving the action name
+  # while replacing its invocation is worse than not touching the file.
+  #
+  # So build.yml is only written when the target already agrees with the template
+  # about which build action to use. A mismatched target keeps its file verbatim
+  # and forgoes template updates; that is the correct trade, because it is
+  # currently working. Nothing else is gated on this -- the merge-queue fixes and
+  # claude-review.yml ship from common/, which every target receives.
+  #
+  # Four cases, and only the last one writes:
+  #   no build.yml           -> skip. Never create one; a library or data repo
+  #                             may not want a build at all.
+  #   0 p6 build refs        -> skip. Fully bespoke (p6-template-uv,
+  #                             p6-template-sam-eslint-pnpm-ts-flatfile).
+  #   action differs         -> skip. Would reassign the archetype.
+  #   action matches         -> write the template.
   if [[ -d "$ROOT_DIR/workflow_files/$org" ]]; then
     local src base
     for src in "$ROOT_DIR/workflow_files/$org/"*; do
       [[ -f "$src" ]] || continue
       base="$(basename "$src")"
-      if [[ -f ".github/workflows/$base" ]]; then
-        cp "$src" ".github/workflows/$base"
-      else
+
+      if [[ ! -f ".github/workflows/$base" ]]; then
         # ::notice:: rather than a bare echo: this line is the only record that a
         # target was deliberately denied a build workflow, and a bare echo is
         # buried in the collapsed ::group:: for this repo. Include $repo so the
         # message stands alone in the run summary.
-        echo "::notice::$repo: skipped org file $base (target has none, archetype unknown)"
+        echo "::notice::$repo: skipped $base, target has none and the archetype it wants is unknowable from here"
+        continue
       fi
+
+      if [[ "$base" != "build.yml" ]]; then
+        cp "$src" ".github/workflows/$base"
+        continue
+      fi
+
+      # `grep -E` rather than `rg`: this runs on a GitHub runner, where ripgrep
+      # is not a guaranteed part of the image, and a missing binary here would
+      # silently match nothing and skip every build.yml. stderr is deliberately
+      # NOT discarded, so a real read error surfaces instead of looking like
+      # "no match".
+      local have want
+      have=$(grep -Eo 'uses: p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*@[A-Za-z0-9._/-]+' \
+        ".github/workflows/$base" | sort -u) || true
+      want=$(grep -Eo 'uses: p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*@[A-Za-z0-9._/-]+' \
+        "$src" | sort -u) || true
+
+      if [[ -z "$have" || -z "$want" ]]; then
+        echo "::notice::$repo: kept its own $base verbatim (no p6 build action found in target or template; bespoke build)"
+        continue
+      fi
+      if [[ "$have" != "$want" ]]; then
+        echo "::notice::$repo: kept its own $base verbatim (target uses ${have#uses: }, template would impose ${want#uses: })"
+        continue
+      fi
+
+      cp "$src" ".github/workflows/$base"
     done
   fi
 
