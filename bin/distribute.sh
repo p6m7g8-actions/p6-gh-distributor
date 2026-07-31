@@ -199,16 +199,17 @@ distribute_to_repo() {
       have=$(build_actions_in ".github/workflows/$base")
       want=$(build_actions_in "$src")
 
-      # `want` cannot be empty here: an org template with no build action is
-      # rejected at startup, so an empty `have` is unambiguously a bespoke target.
+      # `want` is guaranteed to be exactly one line: a template resolving to any
+      # other count is rejected at startup. So an empty `have` is unambiguously a
+      # bespoke target, and a multi-line `have` can only be the target's doing.
       if [[ -z "$have" ]]; then
         echo "::notice::$repo: kept its own $base verbatim (references no p6 build action; bespoke build)"
         continue
       fi
       if [[ "$have" != "$want" ]]; then
         # Flatten to one line: GitHub takes only the first line of an annotation
-        # and dumps the remainder as raw log, and either side can hold more than
-        # one action once a target has multiple build steps.
+        # and dumps the remainder as raw log. Only `have` can be multi-line, from a
+        # target with several build steps; `want` is single by startup guarantee.
         echo "::notice::$repo: kept its own $base verbatim (target uses $(printf '%s' "$have" | tr '\n' ' '), template would impose $(printf '%s' "$want" | tr '\n' ' '))"
         continue
       fi
