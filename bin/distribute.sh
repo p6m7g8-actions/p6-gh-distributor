@@ -80,13 +80,36 @@ distribute_to_repo() {
   local base_sha
   base_sha=$(git rev-parse HEAD)
 
-  # Copy common files
+  # Common files are created or updated unconditionally. Every repo needs these
+  # regardless of what it builds: approval, enqueue, labelling, title lint.
   mkdir -p .github/workflows
   cp "$ROOT_DIR/workflow_files/common/"* .github/workflows/
 
-  # Apply org-specific overrides
+  # Org-specific files are UPDATE-ONLY: refreshed where the target already has
+  # them, never created where it does not.
+  #
+  # The only org-specific file is build.yml, and it names one build archetype per
+  # org. That assumption does not hold -- p6m7g8 alone spans five archetypes
+  # across 30 repos -- so creating it where absent would hand a repo a build it
+  # never asked for, chosen by which org it happens to live in. Six targets have
+  # no build.yml today (p6-gh-manager, p6-sso-scim, rustenv, p6huggingface,
+  # p6-ldar-year-end-collage, p6-ai-agent-skills); a library or data repo may
+  # legitimately not want one.
+  #
+  # This does NOT fix the archetype problem for repos that DO have a build.yml --
+  # those are still overwritten with the org's single flavor. That needs a
+  # per-repo flavor selector and is deliberately out of scope here.
   if [[ -d "$ROOT_DIR/workflow_files/$org" ]]; then
-    cp "$ROOT_DIR/workflow_files/$org/"* .github/workflows/
+    local src base
+    for src in "$ROOT_DIR/workflow_files/$org/"*; do
+      [[ -f "$src" ]] || continue
+      base="$(basename "$src")"
+      if [[ -f ".github/workflows/$base" ]]; then
+        cp "$src" ".github/workflows/$base"
+      else
+        echo "Skipped org file $base: target has none, and its archetype is unknown"
+      fi
+    done
   fi
 
   # Remove files that have been retired from the pack. Copying alone can never
