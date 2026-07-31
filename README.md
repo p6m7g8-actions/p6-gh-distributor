@@ -70,13 +70,26 @@ Every skip is reported as a `::notice::` naming the repo and both actions, so it
 appears in the run summary rather than only inside the collapsed per-repo log
 group.
 
-### Known limitation
+### Known limitations
 
-Targets whose build action differs from their org template receive no `build.yml`
-updates at all, including merge-queue fixes to that file. Some of those
-mismatches are only pre-rename names (`next-build` versus `p6-next-build`) rather
-than genuine archetype differences; those will start matching once downstream
-`uses:` refs are updated to the renamed actions.
+**Matching targets still lose structural divergence.** When the build action
+matches, the whole file is replaced. A target that shares the action but has an
+extra job or extra steps loses them. The two fully bespoke targets are skipped
+because they reference no p6 build action at all, but a *partially* diverged one
+is not detected.
+
+**Mismatched targets receive no `build.yml` updates at all**, including
+merge-queue fixes to that file. Against current targets that is 18 of 30 in
+`p6m7g8` and 3 of 4 in each of `pgollucci` and `luckydoganimalrescue`. Concretely, if such a
+target lacks the `push` trigger on `gh-readonly-queue/**` that lets `build` report
+on the queue ref, distribution will not add it, and that gap persists. Everything
+shipped from `common/` still reaches them, including `auto-queue.yml` and
+`claude-review.yml`.
+
+Some of these mismatches are only pre-rename names (`next-build` versus
+`p6-next-build`) rather than genuine archetype differences. Those will start
+matching once downstream `uses:` refs are updated to the renamed actions, which
+shrinks this set without any change here.
 
 ## Orgs
 

@@ -60,6 +60,28 @@ fi
 
 FAILED=()
 
+# Prints the p6 build action NAMES referenced by a workflow file, one per line,
+# deduped, WITHOUT the `@ref`.
+#
+# The ref is excluded on purpose. Comparing `action@ref` would report a target
+# that agrees on the archetype but is pinned differently -- `p6-repo-build@v1`
+# against a template's `p6-repo-build@main` -- as a mismatch, and skip a file it
+# should have updated. Archetype is the action; the ref is the template's to set.
+#
+# The pattern is deliberately looser than `uses: <name>`: YAML allows any run of
+# whitespace after the colon and permits the value to be quoted, and both forms
+# would otherwise yield no match and be misreported as a bespoke build.
+#
+# `grep -E` rather than `rg`, because this runs on a GitHub runner where ripgrep
+# is not a guaranteed part of the image; a missing binary would match nothing and
+# silently skip every build.yml. stderr is NOT discarded, so a genuine read error
+# surfaces instead of looking like "no match".
+build_actions_in() {
+  grep -Eo "uses:[[:space:]]+['\"]?p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*" "$1" \
+    | grep -Eo 'p6m7g8-actions/[a-z0-9-]+' \
+    | sort -u || true
+}
+
 distribute_to_repo() {
   local repo="$1"
   local org="${repo%%/*}"
@@ -90,8 +112,8 @@ distribute_to_repo() {
   #
   # The pack holds one build.yml per org naming one build action, and that does
   # not survive the fleet: p6m7g8 spans five archetypes across 30 repos, and
-  # pgollucci and luckydoganimalrescue disagree with their own template in half
-  # their targets. A straight copy rewrites a correct `p6-cdk-construct-build` to
+  # pgollucci and luckydoganimalrescue disagree with their own template in 3 of
+  # their 4 targets. A straight copy rewrites a correct `p6-cdk-construct-build` to
   # `p6-repo-build` and breaks that repo's CI.
   #
   # Substituting just the `uses:` line back is NOT sufficient and was tried:
@@ -136,23 +158,19 @@ distribute_to_repo() {
         continue
       fi
 
-      # `grep -E` rather than `rg`: this runs on a GitHub runner, where ripgrep
-      # is not a guaranteed part of the image, and a missing binary here would
-      # silently match nothing and skip every build.yml. stderr is deliberately
-      # NOT discarded, so a real read error surfaces instead of looking like
-      # "no match".
       local have want
-      have=$(grep -Eo 'uses: p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*@[A-Za-z0-9._/-]+' \
-        ".github/workflows/$base" | sort -u) || true
-      want=$(grep -Eo 'uses: p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*@[A-Za-z0-9._/-]+' \
-        "$src" | sort -u) || true
+      have=$(build_actions_in ".github/workflows/$base")
+      want=$(build_actions_in "$src")
 
       if [[ -z "$have" || -z "$want" ]]; then
-        echo "::notice::$repo: kept its own $base verbatim (no p6 build action found in target or template; bespoke build)"
+        echo "::notice::$repo: kept its own $base verbatim (no p6 build action matched in $( [[ -z "$have" ]] && echo target || echo template ); treating as bespoke)"
         continue
       fi
       if [[ "$have" != "$want" ]]; then
-        echo "::notice::$repo: kept its own $base verbatim (target uses ${have#uses: }, template would impose ${want#uses: })"
+        # Flatten to one line: GitHub takes only the first line of an annotation
+        # and dumps the remainder as raw log, and either side can hold more than
+        # one action once a target has multiple build steps.
+        echo "::notice::$repo: kept its own $base verbatim (target uses $(printf '%s' "$have" | tr '\n' ' '), template would impose $(printf '%s' "$want" | tr '\n' ' '))"
         continue
       fi
 
