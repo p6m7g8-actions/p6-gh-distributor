@@ -109,6 +109,75 @@ check "commented step is ignored" 0 'jobs:
       - uses: p6m7g8-actions/p6-repo-build@main
 '
 
+# --- archetype templates ---------------------------------------------------
+# Selection is by filename, so a template whose name disagrees with the action
+# inside it would hand targets the wrong build. That check has its own scratch
+# shape, since it lives in workflow_files/_build rather than an org dir.
+arch_scratch() {
+  local t
+  t=$(mktemp -d)
+  mkdir -p "$t/repos" "$t/workflow_files/common" "$t/workflow_files/testorg" "$t/workflow_files/_build"
+  cp workflow_files/common/* "$t/workflow_files/common/" || { echo "FATAL: scratch common/" >&2; exit 1; }
+  cp workflow_files/retired.txt "$t/workflow_files/" || { echo "FATAL: scratch retired.txt" >&2; exit 1; }
+  printf '%s' "$ONE" > "$t/workflow_files/testorg/build.yml"
+  printf '%s' "$2" > "$t/workflow_files/_build/$1"
+  : > "$t/repos/testorg.txt"
+  printf '%s' "$t"
+}
+
+arch_check() {
+  local name="$1" want="$2" fname="$3" body="$4" expect="${5:-}" t rc out
+  t=$(arch_scratch "$fname" "$body")
+  out=$(GH_TOKEN=unused ROOT_DIR="$t" ORGS=testorg bash "$SCRIPT" 2>&1)
+  rc=$?
+  rm -rf "$t"
+  if [[ "$rc" != "$want" ]]; then
+    echo "FAIL  $name: expected exit $want, got $rc"; fails=$((fails + 1)); return
+  fi
+  if [[ -n "$expect" && "$out" != *"$expect"* ]]; then
+    echo "FAIL  $name: exit $rc was right but message did not contain '$expect'"; fails=$((fails + 1)); return
+  fi
+  echo "ok    $name (exit $rc)"
+}
+
+arch_check "archetype template matching its filename is valid" 0 \
+  "p6-repo-build.yml" "$ONE"
+
+arch_check "archetype filename disagreeing with its action is rejected" 2 \
+  "p6-cdk-build.yml" "$ONE" "named for 'p6-cdk-build' but invokes 'p6-repo-build'"
+
+arch_check "archetype template with two actions is rejected" 2 \
+  "p6-repo-build.yml" 'jobs:
+  a:
+    steps:
+      - uses: p6m7g8-actions/p6-repo-build@main
+  b:
+    steps:
+      - uses: p6m7g8-actions/p6-cdk-build@main
+' "expected exactly 1"
+
+# Every shipped archetype template must be named for the action it invokes; this
+# is the guard that keeps p6-cdk-build out by design rather than by accident.
+for f in workflow_files/_build/*.yml; do
+  expect="p6m7g8-actions/$(basename "$f" .yml)"
+  got=$(grep -Ev '^[[:space:]]*#' "$f" \
+    | grep -Eo "uses:[[:space:]]+['\"]?p6m7g8-actions/[a-z0-9-]*build[a-z0-9-]*" \
+    | grep -Eo 'p6m7g8-actions/[a-z0-9-]+' | sort -u)
+  if [[ "$got" == "$expect" ]]; then
+    echo "ok    shipped archetype $(basename "$f") invokes $expect"
+  else
+    echo "FAIL  shipped archetype $(basename "$f") invokes '$got', expected '$expect'"
+    fails=$((fails + 1))
+  fi
+done
+
+if [[ -e workflow_files/_build/p6-cdk-build.yml ]]; then
+  echo "FAIL  p6-cdk-build.yml must not exist: it requires per-repo AWS values no shared template can supply"
+  fails=$((fails + 1))
+else
+  echo "ok    p6-cdk-build has no archetype template (correct, needs per-repo AWS values)"
+fi
+
 # The real pack must always pass; this is the regression guard that matters.
 t=$(mktemp -d); mkdir -p "$t/repos"; ln -s "$PWD/workflow_files" "$t/workflow_files"; : > "$t/repos/none.txt"
 GH_TOKEN=unused ROOT_DIR="$t" ORGS=none bash "$SCRIPT" > /dev/null 2>&1

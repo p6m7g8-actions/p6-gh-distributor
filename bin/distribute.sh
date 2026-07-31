@@ -100,9 +100,34 @@ build_actions_in() {
 # nothing, skipping everything, and reading as success. So validate once, before
 # any repo is cloned, and fail hard -- the convention retired.txt validation
 # above already sets.
+ARCHETYPE_DIR="$ROOT_DIR/workflow_files/_build"
+
+# Archetype templates are selected by FILENAME, so a file whose name disagrees
+# with the action inside it would hand a target the wrong build. Validate the
+# whole set once, up front, for the same reason the org templates are validated:
+# a per-target discovery of this would be 30 confusing notices.
+if [[ -d "$ARCHETYPE_DIR" ]]; then
+  for arch in "$ARCHETYPE_DIR"/*.yml; do
+    [[ -f "$arch" ]] || continue
+    arch_expect="$(basename "$arch" .yml)"
+    arch_actions="$(build_actions_in "$arch")"
+    arch_count="$(printf '%s' "$arch_actions" | grep -c . || true)"
+    if [[ "$arch_count" != 1 ]]; then
+      echo "::error::$arch resolves to $arch_count p6m7g8-actions build actions, expected exactly 1: $(printf '%s' "$arch_actions" | tr '\n' ' ')" >&2
+      exit 2
+    fi
+    if [[ "$arch_actions" != "p6m7g8-actions/$arch_expect" ]]; then
+      echo "::error::$arch is named for '$arch_expect' but invokes '${arch_actions#p6m7g8-actions/}'; selection is by filename, so this would hand targets the wrong build" >&2
+      exit 2
+    fi
+  done
+fi
+
 for org_dir in "$ROOT_DIR/workflow_files/"*/; do
   [[ -d "$org_dir" ]] || continue
-  [[ "$(basename "$org_dir")" == "common" ]] && continue
+  case "$(basename "$org_dir")" in
+    common|_build) continue ;;
+  esac
   org_build="${org_dir}build.yml"
   [[ -f "$org_build" ]] || continue
   org_actions="$(build_actions_in "$org_build")"
@@ -207,10 +232,28 @@ distribute_to_repo() {
         continue
       fi
       if [[ "$have" != "$want" ]]; then
+        # The org template disagrees, but the target's own archetype may still be
+        # managed. Fall back to workflow_files/_build/<action>.yml, which supplies
+        # the same triggers with the `with:` block that archetype actually needs.
+        #
+        # This is what makes the org template's single archetype non-fatal: a repo
+        # gets the managed build.yml for ITS archetype instead of its org's, so the
+        # queue-ref trigger reaches repos the org template can never serve.
+        local arch_src=""
+        if [[ -f "$ARCHETYPE_DIR/${have#p6m7g8-actions/}.yml" ]]; then
+          arch_src="$ARCHETYPE_DIR/${have#p6m7g8-actions/}.yml"
+        fi
+
+        if [[ -n "$arch_src" && "$(printf '%s' "$have" | grep -c .)" == 1 ]]; then
+          cp "$arch_src" ".github/workflows/$base"
+          echo "::notice::$repo: $base written from the ${have#p6m7g8-actions/} archetype template, not the $org org template"
+          continue
+        fi
+
         # Flatten to one line: GitHub takes only the first line of an annotation
         # and dumps the remainder as raw log. Only `have` can be multi-line, from a
         # target with several build steps; `want` is single by startup guarantee.
-        echo "::notice::$repo: kept its own $base verbatim (target uses $(printf '%s' "$have" | tr '\n' ' '), template would impose $(printf '%s' "$want" | tr '\n' ' '))"
+        echo "::notice::$repo: kept its own $base verbatim (target uses $(printf '%s' "$have" | tr '\n' ' '), no archetype template for it and the $org template would impose $(printf '%s' "$want" | tr '\n' ' '))"
         continue
       fi
 

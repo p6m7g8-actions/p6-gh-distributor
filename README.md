@@ -8,6 +8,7 @@ orgs, creating PRs with `auto-approve` and `auto-merge` labels.
 ```text
 workflow_files/
 ├── common/          # created or updated in every target
+├── _build/          # one build.yml per archetype, selected by filename
 └── <org>/           # org-specific, UPDATE-ONLY (build.yml)
 
 repos/
@@ -52,8 +53,15 @@ working.
 | --- | --- |
 | absent | skipped, never created |
 | no p6 build action | skipped, bespoke |
-| build action differs from template | skipped verbatim |
-| build action matches template | template written |
+| matches the org template | org template written |
+| differs, but `_build/<action>.yml` exists | **archetype template written** |
+| differs, no archetype template | skipped verbatim |
+
+The archetype fallback is what makes the org template's single build action
+non-fatal: a repo receives the managed `build.yml` for *its* archetype rather than
+its org's, so the queue-ref trigger reaches repos the org template can never
+serve. See `workflow_files/_build/README.md` for which archetypes are templated
+and why `p6-cdk-build` deliberately is not.
 
 Everything in `common/` still reaches every target regardless of archetype,
 including `auto-queue.yml` and `claude-review.yml`. What a mismatched target does
