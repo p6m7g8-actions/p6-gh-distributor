@@ -43,6 +43,7 @@ p6m7g8-dotfiles/p6df-github
 p6m7g8-dotfiles/p6df-go
 p6m7g8-dotfiles/p6df-granola
 p6m7g8-dotfiles/p6df-graphql
+p6m7g8-dotfiles/p6df-greenhouse
 p6m7g8-dotfiles/p6df-gws
 p6m7g8-dotfiles/p6df-helm
 p6m7g8-dotfiles/p6df-heroku

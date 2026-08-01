@@ -25,6 +25,5 @@ p6m7g8/p6-template-uv
 p6m7g8/p6-zsh-pnpm-plugin
 p6m7g8/p6-zsh-projen-plugin
 p6m7g8/p6-zsh-sam-plugin
-p6m7g8/p6df-greenhouse
 p6m7g8/p6m7g8.com
 p6m7g8/rustenv
