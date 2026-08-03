@@ -18,8 +18,23 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: build-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A `push` to a gh-readonly-queue ref and a `merge_group` on that same
+  # ref both leave `github.event.pull_request.number` empty and both
+  # resolve `github.ref` to the queue ref, so they otherwise share one
+  # group. event_name in the key separates exactly those two, and nothing
+  # more: it does NOT separate `reopened` from `synchronize`, since both
+  # arrive as `pull_request`. Same construction as
+  # workflow_files/p6m7g8-actions/build.yml, folded only to stay under 80
+  # columns.
+  group: >-
+    build-${{ github.event_name }}-${{
+    github.event.pull_request.number || github.ref }}
+  # This is the line that prevents a dequeue. Only `pull_request` runs are
+  # cancellable, so a queue-ref build can never be superseded, and a
+  # cancelled required check can therefore never dequeue the PR. This
+  # workflow deliberately runs the FULL build on queue refs, so it is the
+  # one that most needs the guarantee.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
