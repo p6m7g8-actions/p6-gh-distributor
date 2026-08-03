@@ -1,8 +1,12 @@
 name: Enqueue PR to Merge Queue (after CI)
 
 on:
+  # Build finishes well before Claude Code Review, so firing only on Build
+  # means the first enqueue always races a still-running `claude-review` and
+  # fails with "Required status check is in progress". Fire again when the
+  # slow lane finishes.
   workflow_run:
-    workflows: ["Build"]
+    workflows: ["Build", "Claude Code Review"]
     types: [completed]
 
 jobs:

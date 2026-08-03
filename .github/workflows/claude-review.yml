@@ -1,8 +1,14 @@
 name: Claude Code Review
 
 on:
+  # `reopened` is load-bearing. The fleet's signed-commit upgrade PRs are
+  # raised under GITHUB_TOKEN, which does not dispatch workflows, so the
+  # `gh pr close` + `gh pr reopen` revival is the only event this workflow
+  # ever sees on them. Omitting it leaves `claude-review`, a required
+  # check, permanently unreported. Full history is in
+  # workflow_files/common/claude-review.yml.
   pull_request:
-    types: [opened, ready_for_review, synchronize]
+    types: [opened, ready_for_review, synchronize, reopened]
   # merge_group is not dispatching, so report on the queue ref via push.
   # This repo is excluded from its own distribution, which is why its pack
   # drifted behind the fleet's current generation.
@@ -18,8 +24,20 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: claude-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # event_name is part of the key on purpose. A `push` to a
+  # gh-readonly-queue ref and a `merge_group` on that same ref both leave
+  # `github.event.pull_request.number` empty and both resolve `github.ref`
+  # to the queue ref, so without it the two share a group and
+  # cancel-in-progress cancels one of them. A cancelled required check
+  # dequeues the PR. Same key construction as
+  # workflow_files/p6m7g8-actions/build.yml, folded only to stay under 80
+  # columns.
+  group: >-
+    claude-${{ github.event_name }}-${{
+    github.event.pull_request.number || github.ref }}
+  # Only PR runs are cancellable. A cancelled required check dequeues the
+  # PR, so a run on a queue ref must never be superseded by anything.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   claude-review:
