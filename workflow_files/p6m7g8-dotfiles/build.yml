@@ -2,7 +2,18 @@ name: Build
 
 on:
   pull_request: {}
-  push: {}
+  # The merge queue needs `build` to report on the queue ref, and merge_group is
+  # not dispatching (last such event org-wide was 2026-03-09), so this must stay
+  # push-triggered. It was previously an unrestricted `push: {}`, which also
+  # double-ran Build on every PR alongside `pull_request` and built
+  # distribute.sh's ephemeral <branch>-staging refs: ~236 wasted runs per
+  # distribution across 118 repos. Worse, it made the newest Build a push one,
+  # and `p6-gh-pr-enqueue` skips silently when `workflow_run.event` is not
+  # `pull_request`, so PRs sat BLOCKED with every check green and no error
+  # anywhere.
+  push:
+    branches:
+      - gh-readonly-queue/**
   merge_group: {}
   workflow_dispatch: {}
 
